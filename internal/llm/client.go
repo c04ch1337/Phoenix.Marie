@@ -16,14 +16,23 @@ type Client struct {
 
 // NewClient creates a new LLM client
 func NewClient(config *Config) (*Client, error) {
-	// Create OpenRouter client
-	openRouterClient := NewOpenRouterClient(config)
+	// Create provider using factory
+	factory := NewProviderFactory(config)
+	provider, err := factory.CreateProvider()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create provider: %w", err)
+	}
+	
+	// Check if provider is available
+	if !provider.IsAvailable() {
+		return nil, fmt.Errorf("provider %s is not available (missing API key or connection)", provider.GetName())
+	}
 	
 	// Create cost manager
 	costManager := NewCostManager(config)
 	
 	// Create router
-	router := NewRouter(openRouterClient, config, costManager)
+	router := NewRouter(provider, config, costManager)
 	
 	// Create prompt config
 	promptConfig := &prompts.Config{
@@ -111,7 +120,7 @@ func (c *Client) GenerateConsciousResponse(
 		RequiresToolUse:   false,
 		MaxTokens:         c.config.DefaultMaxTokens,
 		Temperature:      c.config.DefaultTemperature,
-		Budget:           0.50, // $0.50 budget for consciousness tasks
+		Budget:           c.config.ConsciousnessBudget,
 	}
 	
 	// Route to optimal model

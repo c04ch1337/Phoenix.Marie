@@ -1,7 +1,6 @@
 package llm
 
 import (
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -9,7 +8,34 @@ import (
 
 // Config holds LLM configuration from environment variables
 type Config struct {
-	OpenRouterAPIKey string
+	// API Configuration
+	Provider string // "openrouter", "openai", "anthropic", "gemini", "grok", "ollama", "lmstudio"
+	
+	// OpenRouter
+	OpenRouterAPIKey  string
+	OpenRouterBaseURL string
+	
+	// OpenAI
+	OpenAIAPIKey  string
+	OpenAIBaseURL string
+	
+	// Anthropic
+	AnthropicAPIKey  string
+	AnthropicBaseURL string
+	
+	// Gemini (Google)
+	GeminiAPIKey  string
+	GeminiBaseURL string
+	
+	// Grok (xAI)
+	GrokAPIKey  string
+	GrokBaseURL string
+	
+	// Ollama (Local)
+	OllamaBaseURL string
+	
+	// LM Studio (Local)
+	LMStudioBaseURL string
 	
 	// Model Selection
 	PrimaryModel   string
@@ -40,31 +66,65 @@ type Config struct {
 	MonthlyBudget    float64
 	DailyBudget      float64
 	CostOptimization bool
+	ConsciousnessBudget float64 // Budget for consciousness tasks
 	
 	// Performance
 	RequestTimeout int // seconds
 	MaxRetries     int
+	RetryBackoff   int // seconds between retries
 	
 	// Prompt Configuration
 	SystemPromptPath      string
 	EnableMemoryContext   bool
 	MaxContextMemories    int
+	
+	// API Headers (optional)
+	HTTPReferer string
+	XTitle      string
 }
 
 // LoadConfig loads configuration from environment variables
 func LoadConfig() (*Config, error) {
 	cfg := &Config{
-		OpenRouterAPIKey: os.Getenv("OPENROUTER_API_KEY"),
+		// API Configuration
+		Provider: getEnvOrDefault("LLM_PROVIDER", "openrouter"),
+		
+		// OpenRouter
+		OpenRouterAPIKey:  os.Getenv("OPENROUTER_API_KEY"),
+		OpenRouterBaseURL: getEnvOrDefault("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+		
+		// OpenAI
+		OpenAIAPIKey:  os.Getenv("OPENAI_API_KEY"),
+		OpenAIBaseURL: getEnvOrDefault("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+		
+		// Anthropic
+		AnthropicAPIKey:  os.Getenv("ANTHROPIC_API_KEY"),
+		AnthropicBaseURL: getEnvOrDefault("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1"),
+		
+		// Gemini
+		GeminiAPIKey:  os.Getenv("GEMINI_API_KEY"),
+		GeminiBaseURL: getEnvOrDefault("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1"),
+		
+		// Grok
+		GrokAPIKey:  os.Getenv("GROK_API_KEY"),
+		GrokBaseURL: getEnvOrDefault("GROK_BASE_URL", "https://api.x.ai/v1"),
+		
+		// Ollama (Local)
+		OllamaBaseURL: getEnvOrDefault("OLLAMA_BASE_URL", "http://localhost:11434"),
+		
+		// LM Studio (Local)
+		LMStudioBaseURL: getEnvOrDefault("LMSTUDIO_BASE_URL", "http://localhost:1234"),
 		
 		// Model Selection - can be overridden per component
-		PrimaryModel:   getEnvOrDefault("LLM_PRIMARY_MODEL", "anthropic/claude-3-sonnet"),
-		SecondaryModel: getEnvOrDefault("LLM_SECONDARY_MODEL", "mistralai/mixtral-8x22b"),
-		TertiaryModel:  getEnvOrDefault("LLM_TERTIARY_MODEL", "meta-llama/llama-3-70b-instruct"),
+		// Default: openai/gpt-4-turbo for OpenRouter
+		PrimaryModel:   getEnvOrDefault("LLM_PRIMARY_MODEL", "openai/gpt-4-turbo"),
+		SecondaryModel: getEnvOrDefault("LLM_SECONDARY_MODEL", "openai/gpt-4-turbo"),
+		TertiaryModel:  getEnvOrDefault("LLM_TERTIARY_MODEL", "openai/gpt-4-turbo"),
 		
 		// Jamey 3.0 Models
-		JameyReasoningModel:   getEnvOrDefault("JAMEY_REASONING_MODEL", "anthropic/claude-3-opus"),
-		JameyOperationalModel: getEnvOrDefault("JAMEY_OPERATIONAL_MODEL", "anthropic/claude-3-sonnet"),
-		JameyRealTimeModel:    getEnvOrDefault("JAMEY_REALTIME_MODEL", "anthropic/claude-3-haiku"),
+		JameyReasoningModel:   getEnvOrDefault("JAMEY_REASONING_MODEL", "openai/gpt-4-turbo"),
+		JameyOperationalModel: getEnvOrDefault("JAMEY_OPERATIONAL_MODEL", "openai/gpt-4-turbo"),
+		JameyRealTimeModel:    getEnvOrDefault("JAMEY_REALTIME_MODEL", "openai/gpt-4-turbo"),
 		
 		// Phoenix.Marie Models
 		PhoenixConsciousnessModel: getEnvOrDefault("PHOENIX_CONSCIOUSNESS_MODEL", "openai/gpt-4-turbo"),
@@ -72,9 +132,9 @@ func LoadConfig() (*Config, error) {
 		PhoenixVoiceModel:          getEnvOrDefault("PHOENIX_VOICE_MODEL", "anthropic/claude-3-haiku"),
 		
 		// ORCH Network Models
-		ORCHStrategicModel:  getEnvOrDefault("ORCH_STRATEGIC_MODEL", "google/gemini-pro-1.5"),
-		ORCHTacticalModel:   getEnvOrDefault("ORCH_TACTICAL_MODEL", "cohere/command-r-plus"),
-		ORCHAnalyticalModel: getEnvOrDefault("ORCH_ANALYTICAL_MODEL", "qwen/qwen-2-72b-instruct"),
+		ORCHStrategicModel:  getEnvOrDefault("ORCH_STRATEGIC_MODEL", "openai/gpt-4-turbo"),
+		ORCHTacticalModel:   getEnvOrDefault("ORCH_TACTICAL_MODEL", "openai/gpt-4-turbo"),
+		ORCHAnalyticalModel: getEnvOrDefault("ORCH_ANALYTICAL_MODEL", "openai/gpt-4-turbo"),
 		
 		// Default Settings
 		DefaultTemperature: getEnvFloatOrDefault("LLM_TEMPERATURE", 0.7),
@@ -84,15 +144,21 @@ func LoadConfig() (*Config, error) {
 		// Cost Management
 		MonthlyBudget:    getEnvFloatOrDefault("LLM_MONTHLY_BUDGET", 1000.0),
 		CostOptimization: getEnvBoolOrDefault("LLM_COST_OPTIMIZATION", true),
+		ConsciousnessBudget: getEnvFloatOrDefault("LLM_CONSCIOUSNESS_BUDGET", 0.50),
 		
 		// Performance
 		RequestTimeout: getEnvIntOrDefault("LLM_REQUEST_TIMEOUT", 60),
 		MaxRetries:     getEnvIntOrDefault("LLM_MAX_RETRIES", 3),
+		RetryBackoff:   getEnvIntOrDefault("LLM_RETRY_BACKOFF", 1),
 		
 		// Prompt Configuration
 		SystemPromptPath:    getEnvOrDefault("PHOENIX_SYSTEM_PROMPT_PATH", "internal/core/prompts/system.txt"),
 		EnableMemoryContext: getEnvBoolOrDefault("PHOENIX_ENABLE_MEMORY_CONTEXT", true),
 		MaxContextMemories:  getEnvIntOrDefault("PHOENIX_MAX_CONTEXT_MEMORIES", 10),
+		
+		// API Headers
+		HTTPReferer: getEnvOrDefault("LLM_HTTP_REFERER", "https://github.com/phoenix-marie/core"),
+		XTitle:      getEnvOrDefault("LLM_X_TITLE", "Phoenix.Marie"),
 	}
 	
 	// Calculate daily budget from monthly
@@ -102,10 +168,8 @@ func LoadConfig() (*Config, error) {
 		cfg.DailyBudget = getEnvFloatOrDefault("LLM_DAILY_BUDGET", 33.33)
 	}
 	
-	// Validate required fields
-	if cfg.OpenRouterAPIKey == "" {
-		return nil, fmt.Errorf("OPENROUTER_API_KEY is required")
-	}
+	// API key is optional - system will skip LLM if not provided
+	// (This allows Phoenix to run without LLM configured)
 	
 	return cfg, nil
 }

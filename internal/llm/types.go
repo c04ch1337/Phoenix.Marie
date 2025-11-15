@@ -52,22 +52,7 @@ const (
 	TaskTypeVoiceProcessing   TaskType = "voice_processing"
 )
 
-// Response represents an LLM response
-type Response struct {
-	Content      string
-	Model        string
-	TokensUsed   TokenUsage
-	Cost         float64
-	ResponseTime time.Duration
-	FinishReason string
-}
-
-// TokenUsage tracks token consumption
-type TokenUsage struct {
-	PromptTokens     int
-	CompletionTokens int
-	TotalTokens      int
-}
+// Response, TokenUsage, and Message are defined in provider.go
 
 // ConsciousContext provides context for consciousness-aware prompts
 type ConsciousContext struct {

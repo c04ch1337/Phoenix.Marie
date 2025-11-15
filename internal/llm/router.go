@@ -7,7 +7,7 @@ import (
 
 // Router intelligently routes tasks to appropriate models
 type Router struct {
-	client      *OpenRouterClient
+	provider    Provider
 	config      *Config
 	costManager *CostManager
 	performance map[string]*ModelPerformance
@@ -15,9 +15,9 @@ type Router struct {
 }
 
 // NewRouter creates a new model router
-func NewRouter(client *OpenRouterClient, config *Config, costManager *CostManager) *Router {
+func NewRouter(provider Provider, config *Config, costManager *CostManager) *Router {
 	return &Router{
-		client:      client,
+		provider:    provider,
 		config:      config,
 		costManager: costManager,
 		performance: make(map[string]*ModelPerformance),
@@ -80,7 +80,7 @@ func (r *Router) RouteToOptimalModel(task Task) (*Response, error) {
 			{Role: "user", Content: task.Prompt},
 		}
 		
-		resp, err := r.client.CallWithRetry(
+		resp, err := r.provider.CallWithRetry(
 			scored.model.ID,
 			messages,
 			task.MaxTokens,

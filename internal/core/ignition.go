@@ -32,16 +32,29 @@ func Ignite() *Phoenix {
 	// Initialize LLM client (optional, won't fail if not configured)
 	var llmClient *llm.Client
 	llmConfig, err := llm.LoadConfig()
-	if err == nil && llmConfig.OpenRouterAPIKey != "" {
-		log.Println("LLM: Initializing OpenRouter client...")
-		llmClient, err = llm.NewClient(llmConfig)
-		if err != nil {
-			log.Printf("Warning: Failed to initialize LLM client: %v", err)
+	if err == nil {
+		// Check if any provider is configured
+		hasProvider := llmConfig.OpenRouterAPIKey != "" ||
+			llmConfig.OpenAIAPIKey != "" ||
+			llmConfig.AnthropicAPIKey != "" ||
+			llmConfig.GeminiAPIKey != "" ||
+			llmConfig.GrokAPIKey != "" ||
+			llmConfig.Provider == "ollama" ||
+			llmConfig.Provider == "lmstudio"
+
+		if hasProvider {
+			log.Printf("LLM: Initializing %s provider...", llmConfig.Provider)
+			llmClient, err = llm.NewClient(llmConfig)
+			if err != nil {
+				log.Printf("Warning: Failed to initialize LLM client: %v", err)
+			} else {
+				log.Println("LLM: Client initialized successfully")
+			}
 		} else {
-			log.Println("LLM: Client initialized successfully")
+			log.Println("LLM: Skipping initialization (no API key configured)")
 		}
 	} else {
-		log.Println("LLM: Skipping initialization (OPENROUTER_API_KEY not set)")
+		log.Printf("LLM: Skipping initialization (config error: %v)", err)
 	}
 
 	p := &Phoenix{Memory: phl, Flame: flame, DNA: dna, LLM: llmClient}
