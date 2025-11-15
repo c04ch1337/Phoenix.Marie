@@ -57,3 +57,7 @@ certs/
 *.bak
 *.backup
 
+data/phl-memory/*
+data/backups/*
+bin/*
+cli

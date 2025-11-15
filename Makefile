@@ -1,4 +1,4 @@
-.PHONY: build run lock branch2 dashboard branch4
+.PHONY: build run lock branch2 dashboard branch4 cli build-cli install-cli chat
 
 build:
 	go build -o bin/phoenix cmd/phoenix/main.go
@@ -33,3 +33,19 @@ branch4:
 	@echo "PWA: Installable"
 	@echo "IMMERSIVE: Stars + Pulse + Flame"
 	@echo "PHOENIX: In Your Pocket"
+
+cli: build-cli
+
+build-cli:
+	@echo "Building CLI..."
+	@go build -o bin/phoenix-cli cmd/cli/main.go
+	@echo "✅ CLI built: bin/phoenix-cli"
+
+install-cli: build-cli
+	@echo "Installing CLI globally..."
+	@sudo cp bin/phoenix-cli /usr/local/bin/phoenix 2>/dev/null || cp bin/phoenix-cli ~/.local/bin/phoenix 2>/dev/null || echo "Install manually: cp bin/phoenix-cli /usr/local/bin/phoenix"
+	@echo "✅ CLI installed (or use: ./bin/phoenix-cli)"
+
+chat: build-cli
+	@echo "Starting Phoenix.Marie Chat..."
+	@./bin/phoenix-cli chat

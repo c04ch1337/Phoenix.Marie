@@ -1,26 +1,58 @@
 package emotion
 
 import (
-    "log"
-    "os"
-    "strconv"
+	"log"
+	"os"
+	"strconv"
 )
 
 var FlamePulse int
 
 func init() {
-    base, _ := strconv.Atoi(os.Getenv("EMOTION_FLAME_PULSE_BASE"))
-    FlamePulse = base
+	base, err := strconv.Atoi(os.Getenv("EMOTION_FLAME_PULSE_BASE"))
+	if err != nil {
+		base = 1 // Default value if env var is not set or invalid
+	}
+	FlamePulse = base
 }
 
 func Pulse(emotion string, intensity int) {
-    FlamePulse += intensity
-    if FlamePulse > 10 { FlamePulse = 10 }
-    log.Printf("EMOTION: %s → Flame Pulse: %d Hz", emotion, FlamePulse)
+	// Get base value to preserve it
+	base, _ := strconv.Atoi(os.Getenv("EMOTION_FLAME_PULSE_BASE"))
+	if base == 0 {
+		base = 1
+	}
+
+	// Calculate new pulse while preserving base
+	newPulse := base + intensity
+	if newPulse > 10 {
+		newPulse = 10
+	}
+	FlamePulse = newPulse
+
+	log.Printf("EMOTION: %s → Flame Pulse: %d Hz", emotion, FlamePulse)
 }
 
 func Speak(msg string) {
-    tone := os.Getenv("EMOTION_VOICE_TONE")
-    style := os.Getenv("EMOTION_RESPONSE_STYLE")
-    log.Printf("PHOENIX (%s, %s): %s", tone, style, msg)
+	tone := os.Getenv("EMOTION_VOICE_TONE")
+	style := os.Getenv("EMOTION_RESPONSE_STYLE")
+	log.Printf("PHOENIX (%s, %s): %s", tone, style, msg)
+}
+
+// GetCurrentState returns the current emotional state including pulse level and configuration
+func GetCurrentState() map[string]interface{} {
+	return map[string]interface{}{
+		"flamePulse":    FlamePulse,
+		"voiceTone":     os.Getenv("EMOTION_VOICE_TONE"),
+		"responseStyle": os.Getenv("EMOTION_RESPONSE_STYLE"),
+	}
+}
+
+// Reset resets the emotion state to initial values (for testing)
+func Reset() {
+	base, err := strconv.Atoi(os.Getenv("EMOTION_FLAME_PULSE_BASE"))
+	if err != nil {
+		base = 1
+	}
+	FlamePulse = base
 }
