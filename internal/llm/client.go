@@ -8,10 +8,13 @@ import (
 
 // Client is the main LLM client that handles all LLM operations
 type Client struct {
-	router        *Router
-	costManager   *CostManager
-	promptManager *prompts.SystemPromptManager
-	config        *Config
+	router         *Router
+	costManager    *CostManager
+	promptManager  *prompts.SystemPromptManager
+	config         *Config
+	healthMonitor  *HealthMonitor
+	fallbackManager *FallbackManager
+	primaryProvider Provider
 }
 
 // NewClient creates a new LLM client
@@ -47,11 +50,22 @@ func NewClient(config *Config) (*Client, error) {
 		return nil, fmt.Errorf("failed to create prompt manager: %w", err)
 	}
 	
+	// Create health monitor
+	healthMonitor := NewHealthMonitor()
+	healthMonitor.RegisterProvider(provider.GetName())
+	healthMonitor.CheckProviderHealth(provider)
+	
+	// Create fallback manager
+	fallbackManager := NewFallbackManager(config, healthMonitor)
+	
 	return &Client{
-		router:        router,
-		costManager:   costManager,
-		promptManager: promptManager,
-		config:        config,
+		router:          router,
+		costManager:     costManager,
+		promptManager:   promptManager,
+		config:          config,
+		healthMonitor:   healthMonitor,
+		fallbackManager: fallbackManager,
+		primaryProvider: provider,
 	}, nil
 }
 
@@ -168,5 +182,25 @@ func (c *Client) CanAffordModel(task Task, model Model) (bool, error) {
 // GetCostEffectiveAlternative returns a cheaper alternative
 func (c *Client) GetCostEffectiveAlternative(task Task, currentModelID string) (string, error) {
 	return c.costManager.GetCostEffectiveAlternative(task, currentModelID)
+}
+
+// Config returns the client configuration
+func (c *Client) Config() *Config {
+	return c.config
+}
+
+// GetProviderHealth returns the health status of a provider
+func (c *Client) GetProviderHealth(providerName string) (*ProviderHealth, bool) {
+	return c.healthMonitor.GetHealth(providerName)
+}
+
+// GetAllProviderHealth returns health status of all providers
+func (c *Client) GetAllProviderHealth() map[string]*ProviderHealth {
+	return c.healthMonitor.GetAllHealth()
+}
+
+// GetAvailableProviders returns a list of available provider names
+func (c *Client) GetAvailableProviders() []string {
+	return c.healthMonitor.GetAvailableProviders()
 }
 

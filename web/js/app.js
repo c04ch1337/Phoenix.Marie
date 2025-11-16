@@ -6,7 +6,8 @@ class DashboardManager {
             orch: document.querySelector('.orch-display'),
             memory: document.querySelector('.memory-display'),
             emotion: document.querySelector('.emotion-display'),
-            evolution: document.querySelector('.evolution-display')
+            evolution: document.querySelector('.evolution-display'),
+            exploration: document.getElementById('exploration-log')
         };
         this.initializeWebSocket();
     }
@@ -57,6 +58,9 @@ class DashboardManager {
                 break;
             case 'evolution':
                 this.updateEvolutionStatus(data.status);
+                break;
+            case 'exploration':
+                this.updateExplorationLog(data.message);
                 break;
             default:
                 console.warn('Unknown update type:', data.type);
@@ -120,6 +124,23 @@ class DashboardManager {
                 <p>Fitness Score: ${status.fitnessScore}</p>
             </div>
         `);
+    }
+
+    updateExplorationLog(message) {
+        if (this.displays.exploration) {
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = `[${timestamp}] ${message}`;
+            this.displays.exploration.innerHTML += '<br>' + entry;
+            
+            // Auto-scroll to bottom
+            this.displays.exploration.scrollTop = this.displays.exploration.scrollHeight;
+            
+            // Limit log entries to last 50
+            const lines = this.displays.exploration.innerHTML.split('<br>');
+            if (lines.length > 50) {
+                this.displays.exploration.innerHTML = lines.slice(-50).join('<br>');
+            }
+        }
     }
 }
 

@@ -2,6 +2,7 @@ package monitoring
 
 import (
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
@@ -109,13 +110,50 @@ func (mi *MonitoringIntegration) GetLatestSnapshot() (MetricsSnapshot, error) {
 
 func (mi *MonitoringIntegration) registerCoreMetrics() error {
 	// Storage metrics
-	if err := mi.collector.RegisterMetric(
-		"storage.operations",
-		Counter,
-		"operations",
-		map[string]string{"component": "storage"},
-	); err != nil {
-		return err
+	metrics := []struct {
+		name      string
+		typ       MetricType
+		unit      string
+		component string
+	}{
+		{"storage.operations", Counter, "operations", "storage"},
+		{"storage.latency", Gauge, "milliseconds", "storage"},
+		{"storage.memory_usage", Gauge, "bytes", "storage"},
+		{"storage.gc_pause", Gauge, "milliseconds", "storage"},
+
+		// Pattern recognition metrics
+		{"patterns.detected", Counter, "patterns", "patterns"},
+		{"patterns.confidence", Gauge, "ratio", "patterns"},
+		{"patterns.processing_time", Gauge, "milliseconds", "patterns"},
+		{"patterns.batch_size", Gauge, "count", "patterns"},
+
+		// Learning system metrics
+		{"learning.progress", Gauge, "ratio", "learning"},
+		{"learning.success_rate", Gauge, "ratio", "learning"},
+		{"learning.model_updates", Counter, "updates", "learning"},
+		{"learning.feedback_latency", Gauge, "milliseconds", "learning"},
+
+		// Dream processing metrics
+		{"dream.processing_time", Gauge, "milliseconds", "dream"},
+		{"dream.insight_count", Counter, "insights", "dream"},
+		{"dream.memory_usage", Gauge, "bytes", "dream"},
+		{"dream.batch_efficiency", Gauge, "ratio", "dream"},
+
+		// Concurrency metrics
+		{"concurrent.goroutines", Gauge, "count", "system"},
+		{"concurrent.mutex_contentions", Counter, "contentions", "system"},
+		{"concurrent.memory_sync", Gauge, "operations", "system"},
+	}
+
+	for _, m := range metrics {
+		if err := mi.collector.RegisterMetric(
+			m.name,
+			m.typ,
+			m.unit,
+			map[string]string{"component": m.component},
+		); err != nil {
+			return fmt.Errorf("failed to register metric %s: %w", m.name, err)
+		}
 	}
 
 	if err := mi.collector.RegisterMetric(
@@ -186,27 +224,48 @@ func (mi *MonitoringIntegration) updateMetrics() {
 	mi.mu.Lock()
 	defer mi.mu.Unlock()
 
+	start := time.Now()
+
 	// Update storage metrics
 	if stats := mi.getStorageStats(); stats != nil {
 		mi.collector.UpdateMetric("storage.operations", float64(stats.Operations))
 		mi.collector.UpdateMetric("storage.latency", stats.AverageLatency)
+		mi.collector.UpdateMetric("storage.memory_usage", float64(stats.MemoryUsage))
+		mi.collector.UpdateMetric("storage.gc_pause", float64(stats.GCPauseNs)/1e6)
 	}
 
 	// Update pattern metrics
 	if analysis := mi.patterns.AnalyzePatterns(); analysis.Patterns != nil {
 		mi.collector.UpdateMetric("patterns.detected", float64(len(analysis.Patterns)))
 		mi.collector.UpdateMetric("patterns.confidence", analysis.AverageConf)
+		mi.collector.UpdateMetric("patterns.processing_time", float64(analysis.ProcessingTime.Milliseconds()))
+		mi.collector.UpdateMetric("patterns.batch_size", float64(analysis.BatchSize))
 	}
 
 	// Update learning metrics
 	mi.collector.UpdateMetric("learning.progress", mi.learning.GetProgress())
 	if stats := mi.learning.GetStats(); stats.TotalPatterns > 0 {
-		successRate := stats.SuccessRate
-		mi.collector.UpdateMetric("learning.success_rate", successRate)
+		mi.collector.UpdateMetric("learning.success_rate", stats.SuccessRate)
+		mi.collector.UpdateMetric("learning.model_updates", float64(stats.ModelUpdates))
+		mi.collector.UpdateMetric("learning.feedback_latency", float64(stats.FeedbackLatency.Milliseconds()))
 	}
 
-	// Collect snapshot
-	mi.collector.CollectSnapshot()
+	// Update dream metrics
+	if dreamStats := mi.getDreamStats(); dreamStats != nil {
+		mi.collector.UpdateMetric("dream.processing_time", float64(dreamStats.ProcessingTime.Milliseconds()))
+		mi.collector.UpdateMetric("dream.insight_count", float64(dreamStats.InsightCount))
+		mi.collector.UpdateMetric("dream.memory_usage", float64(dreamStats.MemoryUsage))
+		mi.collector.UpdateMetric("dream.batch_efficiency", dreamStats.BatchEfficiency)
+	}
+
+	// Update concurrency metrics
+	mi.collector.UpdateMetric("concurrent.goroutines", float64(runtime.NumGoroutine()))
+	mi.collector.UpdateMetric("concurrent.mutex_contentions", float64(runtime.NumMutexes()))
+	mi.collector.UpdateMetric("concurrent.memory_sync", float64(runtime.NumMemSync()))
+
+	// Collect snapshot with execution time
+	snapshot := mi.collector.CollectSnapshot()
+	snapshot.Metrics["monitoring.execution_time"] = float64(time.Since(start).Milliseconds())
 }
 
 func (mi *MonitoringIntegration) getStorageStats() *StorageStats {

@@ -65,6 +65,66 @@ main {
     padding: var(--spacing);
 }
 
+/* Queen's Journey Card */
+#queens-journey .status {
+    font-weight: bold;
+    color: var(--accent-color);
+    text-align: center;
+    padding: calc(var(--spacing) * 0.5);
+    margin-bottom: var(--spacing);
+    border-bottom: 1px solid var(--accent-color);
+    font-size: 1.1em;
+    letter-spacing: 0.1em;
+}
+
+#queens-journey .log {
+    min-height: 200px;
+    max-height: 400px;
+    overflow-y: auto;
+    background-color: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    padding: var(--spacing);
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+    line-height: 1.8;
+    color: #e8f4f8;
+    border: 1px solid rgba(52, 152, 219, 0.3);
+}
+
+#queens-journey .log::-webkit-scrollbar {
+    width: 8px;
+}
+
+#queens-journey .log::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+
+#queens-journey .log::-webkit-scrollbar-thumb {
+    background: var(--accent-color);
+    border-radius: 4px;
+}
+
+#queens-journey .log::-webkit-scrollbar-thumb:hover {
+    background: #2980b9;
+}
+
+/* Animation for new log entries */
+@keyframes log-entry {
+    0% {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+#queens-journey .log > * {
+    animation: log-entry 0.5s ease-out;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     main {

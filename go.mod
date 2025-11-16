@@ -1,6 +1,8 @@
 module github.com/phoenix-marie/core
 
-go 1.21
+go 1.24.0
+
+toolchain go1.24.10
 
 require (
 	github.com/dgraph-io/badger/v3 v3.2103.5
@@ -14,6 +16,7 @@ require (
 	github.com/dgraph-io/ristretto v0.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b // indirect
 	github.com/golang/groupcache v0.0.0-20190702054246-869f871628b6 // indirect
 	github.com/golang/protobuf v1.3.1 // indirect
@@ -24,4 +27,5 @@ require (
 	go.opencensus.io v0.22.5 // indirect
 	golang.org/x/net v0.0.0-20201021035429-f5854403a974 // indirect
 	golang.org/x/sys v0.0.0-20221010170243-090e33056c14 // indirect
+	golang.org/x/time v0.14.0 // indirect
 )

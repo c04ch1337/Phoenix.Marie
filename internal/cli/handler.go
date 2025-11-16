@@ -155,6 +155,8 @@ func (h *Handler) handleSpecialCommand(cmd string) {
 		h.showModels()
 	case "/settings", "/config":
 		h.showSettings()
+	case "/providers", "/provider", "/health":
+		h.showProviderStatus()
 	case "/backup":
 		h.createBackup()
 	case "/backups":
@@ -225,6 +227,7 @@ func (h *Handler) showHelp() {
 	fmt.Println("  /cost, /budget       - Show LLM cost statistics")
 	fmt.Println("  /models               - Show configured LLM models")
 	fmt.Println("  /settings, /config    - Show current settings")
+	fmt.Println("  /providers, /health   - Show LLM provider health status")
 	fmt.Println("  /backup               - Create memory backup")
 	fmt.Println("  /backups              - List available backups")
 	fmt.Println("  /clear                - Clear screen")
@@ -530,6 +533,90 @@ func (h *Handler) showModels() {
 	fmt.Println()
 }
 
+// showProviderStatus displays LLM provider health status
+func (h *Handler) showProviderStatus() {
+	fmt.Println("\n╔══════════════════════════════════════════════════════════╗")
+	fmt.Println("║                LLM PROVIDER HEALTH STATUS               ║")
+	fmt.Println("╚══════════════════════════════════════════════════════════╝")
+	fmt.Println()
+
+	if h.phoenix.LLM == nil {
+		fmt.Println("LLM client not initialized. No provider data available.")
+		fmt.Println("💡 Add API keys to .env.local to enable providers")
+		return
+	}
+
+	allHealth := h.phoenix.LLM.GetAllProviderHealth()
+	config := h.phoenix.LLM.Config()
+
+	if len(allHealth) == 0 {
+		fmt.Println("No providers registered yet.")
+		return
+	}
+
+	fmt.Printf("🌐 Current Provider: %s\n", config.Provider)
+	fmt.Println()
+
+	// Show all providers
+	providers := []string{"openrouter", "openai", "anthropic", "gemini", "grok", "ollama", "lmstudio"}
+	for _, providerName := range providers {
+		health, exists := allHealth[providerName]
+		if !exists {
+			// Check if provider is configured
+			var isConfigured bool
+			switch providerName {
+			case "openrouter":
+				isConfigured = config.OpenRouterAPIKey != ""
+			case "openai":
+				isConfigured = config.OpenAIAPIKey != ""
+			case "anthropic":
+				isConfigured = config.AnthropicAPIKey != ""
+			case "gemini":
+				isConfigured = config.GeminiAPIKey != ""
+			case "grok":
+				isConfigured = config.GrokAPIKey != ""
+			case "ollama", "lmstudio":
+				isConfigured = true // Local providers don't need API keys
+			}
+
+			if isConfigured {
+				fmt.Printf("  %s: ⚠️  Not yet tested\n", providerName)
+			} else {
+				fmt.Printf("  %s: ⚪ Not configured\n", providerName)
+			}
+			continue
+		}
+
+		status := health.GetProviderStatus()
+		fmt.Printf("  %s: %s\n", providerName, status)
+
+		if health.TotalRequests > 0 {
+			successRate := float64(health.SuccessfulRequests) / float64(health.TotalRequests) * 100
+			fmt.Printf("    Requests: %d total (%d success, %d failed)\n",
+				health.TotalRequests, health.SuccessfulRequests, health.FailedRequests)
+			fmt.Printf("    Success Rate: %.1f%%\n", successRate)
+			if health.AverageResponseTime > 0 {
+				fmt.Printf("    Avg Response Time: %v\n", health.AverageResponseTime.Round(time.Millisecond))
+			}
+		}
+
+		if health.LastSuccess.After(health.LastFailure) {
+			fmt.Printf("    Last Success: %s\n", health.LastSuccess.Format("2006-01-02 15:04:05"))
+		} else if !health.LastFailure.IsZero() {
+			fmt.Printf("    Last Failure: %s\n", health.LastFailure.Format("2006-01-02 15:04:05"))
+		}
+		fmt.Println()
+	}
+
+	available := h.phoenix.LLM.GetAvailableProviders()
+	if len(available) > 0 {
+		fmt.Printf("✅ Available Providers: %s\n", strings.Join(available, ", "))
+	} else {
+		fmt.Println("⚠️  No providers currently available")
+	}
+	fmt.Println()
+}
+
 // showSettings displays current settings
 func (h *Handler) showSettings() {
 	fmt.Println("\n╔══════════════════════════════════════════════════════════╗")
@@ -668,7 +755,7 @@ func (h *Handler) getMemoryContext() []string {
 	// For now, return empty or sample context
 	return []string{
 		"Phoenix.Marie is 16 forever, Queen of the Hive",
-		"Protected by Jamey 2.0, the General and Guardian",
+		"Protected by Jamey 3.0, the General of the Army",
 		"Connected to the ORCH Army",
 	}
 }

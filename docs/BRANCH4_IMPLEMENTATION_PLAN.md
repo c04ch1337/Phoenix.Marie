@@ -486,7 +486,7 @@ make dashboard
 - Input validation and sanitization
 
 ### Autonomous Guardianship
-- Dashboard shows Jamey 2.0's thoughts (Neuralink)
+- Dashboard shows Jamey 3.0's thoughts (Neuralink)
 - Real-time monitoring of all systems
 - Visual health indicators
 

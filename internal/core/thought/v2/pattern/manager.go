@@ -1,7 +1,11 @@
 package pattern
 
 import (
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 )
@@ -56,18 +60,30 @@ func NewManager() *Manager {
 }
 
 // DetectPatterns analyzes input data for patterns
-func (m *Manager) DetectPatterns(input interface{}) []Pattern {
+func (m *Manager) DetectPatterns(input interface{}) ([]Pattern, error) {
+	if err := validateInput(input); err != nil {
+		return nil, fmt.Errorf("invalid input: %w", err)
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	var detected []Pattern
 
 	// Extract metadata if available
-	metadata := extractMetadata(input)
+	metadata, err := extractMetadata(input)
+	if err != nil {
+		return nil, fmt.Errorf("metadata extraction failed: %w", err)
+	}
 
 	// Create new pattern from input
+	patternID, err := generatePatternID()
+	if err != nil {
+		return nil, fmt.Errorf("pattern ID generation failed: %w", err)
+	}
+
 	pattern := Pattern{
-		ID:         generatePatternID(input),
+		ID:         patternID,
 		Type:       determinePatternType(input),
 		Data:       input,
 		Confidence: calculateInitialConfidence(input),
@@ -90,11 +106,15 @@ func (m *Manager) DetectPatterns(input interface{}) []Pattern {
 	// Update state
 	m.updateState(detected)
 
-	return detected
+	return detected, nil
 }
 
 // RegisterPattern registers a new pattern
 func (m *Manager) RegisterPattern(pattern Pattern) error {
+	if err := validatePattern(pattern); err != nil {
+		return fmt.Errorf("invalid pattern: %w", err)
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -110,6 +130,10 @@ func (m *Manager) RegisterPattern(pattern Pattern) error {
 
 // UpdatePattern updates an existing pattern
 func (m *Manager) UpdatePattern(pattern Pattern) error {
+	if err := validatePattern(pattern); err != nil {
+		return fmt.Errorf("invalid pattern: %w", err)
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -240,16 +264,13 @@ func (m *Manager) findTopPatterns(n int) []Pattern {
 		return nil
 	}
 
-	// Convert map to slice for sorting
 	patterns := make([]Pattern, 0, len(m.patterns))
 	for _, p := range m.patterns {
 		patterns = append(patterns, p)
 	}
 
-	// Sort by confidence
 	sortPatternsByConfidence(patterns)
 
-	// Return top N patterns
 	if len(patterns) < n {
 		return patterns
 	}
@@ -258,15 +279,55 @@ func (m *Manager) findTopPatterns(n int) []Pattern {
 
 // Utility functions
 
-func generatePatternID(input interface{}) string {
-	// Implementation would depend on the input type
-	// This is a simple placeholder
-	return fmt.Sprintf("pattern_%d", time.Now().UnixNano())
+func generatePatternID() (string, error) {
+	// Generate 16 random bytes for the ID
+	bytes := make([]byte, 16)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("failed to generate random bytes: %w", err)
+	}
+
+	// Encode as URL-safe base64
+	return base64.URLEncoding.EncodeToString(bytes), nil
+}
+
+func validateInput(input interface{}) error {
+	if input == nil {
+		return fmt.Errorf("input cannot be nil")
+	}
+
+	// Validate input can be marshaled to JSON
+	if _, err := json.Marshal(input); err != nil {
+		return fmt.Errorf("input must be JSON serializable: %w", err)
+	}
+
+	return nil
+}
+
+func validatePattern(p Pattern) error {
+	if p.ID == "" {
+		return fmt.Errorf("pattern ID cannot be empty")
+	}
+
+	if p.Type == "" {
+		return fmt.Errorf("pattern type cannot be empty")
+	}
+
+	if p.Data == nil {
+		return fmt.Errorf("pattern data cannot be nil")
+	}
+
+	if p.Confidence < 0 || p.Confidence > 1 {
+		return fmt.Errorf("confidence must be between 0 and 1")
+	}
+
+	if p.Timestamp.IsZero() {
+		return fmt.Errorf("timestamp cannot be zero")
+	}
+
+	return nil
 }
 
 func determinePatternType(input interface{}) string {
-	// Implementation would depend on the input type
-	// This is a simple placeholder
 	return fmt.Sprintf("%T", input)
 }
 
@@ -276,19 +337,48 @@ func calculateInitialConfidence(input interface{}) float64 {
 	return 0.5
 }
 
-func extractMetadata(input interface{}) map[string]interface{} {
-	// Implementation would depend on the input type
-	// This is a simple placeholder
-	return make(map[string]interface{})
+func extractMetadata(input interface{}) (map[string]interface{}, error) {
+	metadata := make(map[string]interface{})
+
+	// Convert input to JSON for metadata extraction
+	data, err := json.Marshal(input)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract basic metadata
+	var rawMap map[string]interface{}
+	if err := json.Unmarshal(data, &rawMap); err == nil {
+		if len(rawMap) > 0 {
+			metadata["fields"] = len(rawMap)
+			metadata["size"] = len(data)
+		}
+	}
+
+	return metadata, nil
 }
 
 func isSimilar(p1, p2 Pattern) bool {
-	// Implementation would depend on pattern comparison logic
-	// This is a simple placeholder
-	return p1.Type == p2.Type
+	if p1.Type != p2.Type {
+		return false
+	}
+
+	// Compare metadata for similarity
+	if len(p1.Metadata) > 0 && len(p2.Metadata) > 0 {
+		matches := 0
+		for k, v1 := range p1.Metadata {
+			if v2, exists := p2.Metadata[k]; exists && v1 == v2 {
+				matches++
+			}
+		}
+		return float64(matches)/float64(len(p1.Metadata)) > 0.7
+	}
+
+	return false
 }
 
 func sortPatternsByConfidence(patterns []Pattern) {
-	// Implementation would use sort.Slice with confidence comparison
-	// This is a placeholder
+	sort.Slice(patterns, func(i, j int) bool {
+		return patterns[i].Confidence > patterns[j].Confidence
+	})
 }

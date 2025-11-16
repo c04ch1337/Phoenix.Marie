@@ -137,7 +137,8 @@ func LoadConfig() (*Config, error) {
 		ORCHAnalyticalModel: getEnvOrDefault("ORCH_ANALYTICAL_MODEL", "openai/gpt-4-turbo"),
 		
 		// Default Settings
-		DefaultTemperature: getEnvFloatOrDefault("LLM_TEMPERATURE", 0.7),
+		// Use PHOENIX_TEMPERATURE if set, otherwise LLM_TEMPERATURE, otherwise 0.9 (v3.3 default)
+		DefaultTemperature: getEnvFloatOrDefault("PHOENIX_TEMPERATURE", getEnvFloatOrDefault("LLM_TEMPERATURE", 0.9)),
 		DefaultMaxTokens:   getEnvIntOrDefault("LLM_MAX_TOKENS", 2000),
 		DefaultTopP:       getEnvFloatOrDefault("LLM_TOP_P", 0.9),
 		

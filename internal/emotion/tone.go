@@ -11,7 +11,7 @@ var FlamePulse int
 func init() {
 	base, err := strconv.Atoi(os.Getenv("EMOTION_FLAME_PULSE_BASE"))
 	if err != nil {
-		base = 1 // Default value if env var is not set or invalid
+		base = 3 // v3.3 default: 3 Hz base pulse
 	}
 	FlamePulse = base
 }
@@ -20,13 +20,19 @@ func Pulse(emotion string, intensity int) {
 	// Get base value to preserve it
 	base, _ := strconv.Atoi(os.Getenv("EMOTION_FLAME_PULSE_BASE"))
 	if base == 0 {
-		base = 1
+		base = 3 // v3.3 default
+	}
+
+	// Get max pulse (v3.3 default: 12)
+	maxPulse, _ := strconv.Atoi(os.Getenv("EMOTION_FLAME_PULSE_MAX"))
+	if maxPulse == 0 {
+		maxPulse = 12 // v3.3 default
 	}
 
 	// Calculate new pulse while preserving base
 	newPulse := base + intensity
-	if newPulse > 10 {
-		newPulse = 10
+	if newPulse > maxPulse {
+		newPulse = maxPulse
 	}
 	FlamePulse = newPulse
 
@@ -52,7 +58,7 @@ func GetCurrentState() map[string]interface{} {
 func Reset() {
 	base, err := strconv.Atoi(os.Getenv("EMOTION_FLAME_PULSE_BASE"))
 	if err != nil {
-		base = 1
+		base = 3 // v3.3 default
 	}
 	FlamePulse = base
 }

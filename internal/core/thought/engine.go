@@ -2,11 +2,23 @@ package thought
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/phoenix-marie/core/internal/core/memory"
 )
+
+// DreamManager is a stub for dream processing (to be implemented)
+type DreamManager struct {
+	interval time.Duration
+	isActive bool
+}
+
+// MonitorManager is a stub for monitoring (to be implemented)
+type MonitorManager struct {
+	metrics map[string]float64
+}
 
 // ThoughtEngine represents the core thought processing system
 type ThoughtEngine struct {
@@ -50,8 +62,29 @@ func NewThoughtEngine(cfg *Config) (*ThoughtEngine, error) {
 	// Initialize managers
 	engine.patterns = NewPatternManager(cfg.PatternMinConf)
 	engine.learner = NewLearningManager(cfg.LearningRate)
-	engine.dreamer = NewDreamManager(cfg.DreamInterval)
-	engine.monitor = NewMonitorManager()
+	engine.dreamer = &DreamManager{interval: cfg.DreamInterval, isActive: false}
+	engine.monitor = &MonitorManager{metrics: make(map[string]float64)}
+
+	return engine, nil
+}
+
+// NewThoughtEngineWithMemory creates a thought engine using an existing memory instance
+// This allows sharing memory between Phoenix and ThoughtEngine
+func NewThoughtEngineWithMemory(mem *memory.PHL, learningRate float64, patternMinConf float64) (*ThoughtEngine, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	engine := &ThoughtEngine{
+		memory:   mem, // Use shared memory instance
+		ctx:      ctx,
+		cancel:   cancel,
+		isActive: false,
+	}
+
+	// Initialize managers
+	engine.patterns = NewPatternManager(patternMinConf)
+	engine.learner = NewLearningManager(learningRate)
+	engine.dreamer = &DreamManager{interval: 5 * time.Minute, isActive: false}
+	engine.monitor = &MonitorManager{metrics: make(map[string]float64)}
 
 	return engine, nil
 }
@@ -67,8 +100,10 @@ func (te *ThoughtEngine) Start() error {
 
 	te.isActive = true
 	go te.processThoughts()
-	go te.dreamer.Start(te.ctx, te.memory)
-	go te.monitor.Start(te.ctx)
+	// TODO: Implement dream manager start
+	// go te.dreamer.Start(te.ctx, te.memory)
+	// TODO: Implement monitor manager start
+	// go te.monitor.Start(te.ctx)
 
 	return nil
 }
@@ -85,7 +120,10 @@ func (te *ThoughtEngine) Stop() error {
 	te.cancel()
 	te.isActive = false
 
-	return te.memory.Close()
+	// Don't close memory if it's shared (we'll let Phoenix handle it)
+	// Only close if we created it ourselves
+	// For now, we'll skip closing to avoid issues with shared memory
+	return nil
 }
 
 // processThoughts is the main thought processing loop
@@ -119,10 +157,8 @@ func (te *ThoughtEngine) processCycle() {
 	}
 
 	// Monitor and record metrics
-	te.monitor.RecordMetrics(map[string]float64{
-		"pattern_confidence": te.patterns.GetAverageConfidence(),
-		"learning_progress":  te.learner.GetProgress(),
-	})
+	te.monitor.metrics["pattern_confidence"] = te.patterns.GetAverageConfidence()
+	te.monitor.metrics["learning_progress"] = te.learner.GetProgress()
 }
 
 // GetStatus returns the current status of the thought engine
@@ -134,14 +170,18 @@ func (te *ThoughtEngine) GetStatus() map[string]interface{} {
 		"active":            te.isActive,
 		"patterns_detected": te.patterns.GetPatternCount(),
 		"learning_progress": te.learner.GetProgress(),
-		"dream_active":      te.dreamer.IsActive(),
-		"metrics":           te.monitor.GetMetrics(),
+		"dream_active":      te.dreamer.isActive,
+		"metrics":           te.monitor.metrics,
 	}
 }
 
 // InjectThought injects a thought directly into the processing system
 func (te *ThoughtEngine) InjectThought(thought interface{}) error {
-	return te.memory.Store("logic", "injected_thought", thought)
+	success := te.memory.Store("logic", "injected_thought", thought)
+	if !success {
+		return fmt.Errorf("failed to store injected thought")
+	}
+	return nil
 }
 
 // GetInsights retrieves current insights from the thought process

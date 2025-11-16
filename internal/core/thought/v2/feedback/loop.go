@@ -1,6 +1,7 @@
 package feedback
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -123,6 +124,7 @@ func (fl *FeedbackLoop) ProcessFeedback(feedback learning.Feedback) error {
 	fl.mu.Lock()
 	defer fl.mu.Unlock()
 
+	ctx := context.Background()
 	startTime := time.Now()
 
 	// Validate feedback
@@ -138,7 +140,7 @@ func (fl *FeedbackLoop) ProcessFeedback(feedback learning.Feedback) error {
 	}
 
 	// Update pattern confidence
-	pattern, err := fl.bridge.RetrievePattern(feedback.PatternID)
+	pattern, err := fl.bridge.RetrievePattern(ctx, feedback.PatternID)
 	if err != nil {
 		fl.updateMetrics(startTime, err)
 		return fmt.Errorf("pattern retrieval failed: %w", err)
@@ -151,7 +153,7 @@ func (fl *FeedbackLoop) ProcessFeedback(feedback learning.Feedback) error {
 	}
 
 	// Store updated pattern
-	if err := fl.bridge.StorePattern(pattern); err != nil {
+	if err := fl.bridge.StorePattern(ctx, pattern); err != nil {
 		fl.updateMetrics(startTime, err)
 		return fmt.Errorf("pattern storage failed: %w", err)
 	}
@@ -197,13 +199,15 @@ func (fl *FeedbackLoop) updateLoop() error {
 	fl.mu.Lock()
 	defer fl.mu.Unlock()
 
+	ctx := context.Background()
+
 	// Sync patterns with memory
-	if err := fl.bridge.SyncPatterns(); err != nil {
+	if err := fl.bridge.SyncPatterns(ctx); err != nil {
 		return fmt.Errorf("pattern sync failed: %w", err)
 	}
 
 	// Store learning state
-	if err := fl.bridge.StoreLearningState(); err != nil {
+	if err := fl.bridge.StoreLearningState(ctx); err != nil {
 		return fmt.Errorf("learning state storage failed: %w", err)
 	}
 

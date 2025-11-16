@@ -7,18 +7,29 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"golang.org/x/time/rate"
 )
 
+// Secure WebSocket configuration
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // In production, this should be more restrictive
+		// Only allow connections from our domain
+		origin := r.Header.Get("Origin")
+		return origin == "http://localhost:8080" || origin == "https://localhost:8080"
 	},
 }
 
+type Client struct {
+	conn     *websocket.Conn
+	limiter  *rate.Limiter
+	lastSeen time.Time
+	mu       sync.Mutex
+}
+
 type Server struct {
-	clients    map[*websocket.Conn]bool
+	clients    map[*websocket.Conn]*Client
 	broadcast  chan []byte
 	register   chan *websocket.Conn
 	unregister chan *websocket.Conn
@@ -26,11 +37,30 @@ type Server struct {
 }
 
 func NewServer() *Server {
-	return &Server{
-		clients:    make(map[*websocket.Conn]bool),
+	s := &Server{
+		clients:    make(map[*websocket.Conn]*Client),
 		broadcast:  make(chan []byte),
 		register:   make(chan *websocket.Conn),
 		unregister: make(chan *websocket.Conn),
+	}
+
+	// Start cleanup routine for inactive clients
+	go s.cleanupInactiveClients()
+	return s
+}
+
+func (s *Server) cleanupInactiveClients() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		s.mu.Lock()
+		for conn, client := range s.clients {
+			if time.Since(client.lastSeen) > 10*time.Minute {
+				s.unregister <- conn
+			}
+		}
+		s.mu.Unlock()
 	}
 }
 
@@ -43,7 +73,11 @@ func (s *Server) run() {
 		select {
 		case client := <-s.register:
 			s.mu.Lock()
-			s.clients[client] = true
+			s.clients[client] = &Client{
+				conn:     client,
+				limiter:  rate.NewLimiter(rate.Every(time.Second), 10), // 10 messages per second
+				lastSeen: time.Now(),
+			}
 			s.mu.Unlock()
 
 		case client := <-s.unregister:
@@ -56,10 +90,18 @@ func (s *Server) run() {
 
 		case message := <-s.broadcast:
 			s.mu.Lock()
-			for client := range s.clients {
-				if err := client.WriteMessage(websocket.TextMessage, message); err != nil {
-					client.Close()
-					delete(s.clients, client)
+			for conn, client := range s.clients {
+				client.mu.Lock()
+				if !client.limiter.Allow() {
+					client.mu.Unlock()
+					continue
+				}
+				client.lastSeen = time.Now()
+				client.mu.Unlock()
+
+				if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
+					conn.Close()
+					delete(s.clients, conn)
 				}
 			}
 			s.mu.Unlock()
@@ -68,6 +110,18 @@ func (s *Server) run() {
 }
 
 func (s *Server) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
+	// Validate JWT token for WebSocket connections
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "Authentication token required", http.StatusUnauthorized)
+		return
+	}
+
+	if _, err := validateToken(token); err != nil {
+		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		http.Error(w, "Could not upgrade connection", http.StatusInternalServerError)
@@ -76,23 +130,55 @@ func (s *Server) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	s.register <- conn
 
-	// Clean up on disconnect
 	defer func() {
 		s.unregister <- conn
 		conn.Close()
 	}()
 
-	// Keep connection alive
 	for {
 		_, _, err := conn.ReadMessage()
 		if err != nil {
 			break
 		}
+
+		client := s.clients[conn]
+		client.mu.Lock()
+		client.lastSeen = time.Now()
+		client.mu.Unlock()
 	}
 }
 
-// REST Endpoints
+// Secure headers middleware
+func secureHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		next.ServeHTTP(w, r)
+	})
+}
 
+// CORS middleware
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:8080")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Max-Age", "86400")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// REST Endpoints with authentication
 func (s *Server) HandleSystemStatus(w http.ResponseWriter, r *http.Request) {
 	status := map[string]interface{}{
 		"status": "operational",
@@ -144,18 +230,22 @@ func (s *Server) HandleEvolutionStats(w http.ResponseWriter, r *http.Request) {
 func (s *Server) SetupRoutes() http.Handler {
 	mux := http.NewServeMux()
 
-	// Serve static files
+	// Apply security middleware to all routes
+	secureHandler := secureHeadersMiddleware(mux)
+	corsHandler := corsMiddleware(secureHandler)
+
+	// Serve static files with security headers
 	mux.Handle("/", http.FileServer(http.Dir("web")))
 
 	// WebSocket endpoint
 	mux.HandleFunc("/ws", s.HandleWebSocket)
 
-	// REST API endpoints
-	mux.HandleFunc("/api/system/status", s.HandleSystemStatus)
-	mux.HandleFunc("/api/orch/metrics", s.HandleOrchMetrics)
-	mux.HandleFunc("/api/memory/state", s.HandleMemoryState)
-	mux.HandleFunc("/api/emotion/data", s.HandleEmotionData)
-	mux.HandleFunc("/api/evolution/stats", s.HandleEvolutionStats)
+	// Protected REST API endpoints
+	mux.HandleFunc("/api/system/status", authMiddleware(s.HandleSystemStatus))
+	mux.HandleFunc("/api/orch/metrics", authMiddleware(s.HandleOrchMetrics))
+	mux.HandleFunc("/api/memory/state", authMiddleware(s.HandleMemoryState))
+	mux.HandleFunc("/api/emotion/data", authMiddleware(s.HandleEmotionData))
+	mux.HandleFunc("/api/evolution/stats", authMiddleware(s.HandleEvolutionStats))
 
-	return mux
+	return corsHandler
 }
